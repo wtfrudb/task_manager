@@ -37,3 +37,4 @@ class LoginRequest(BaseModel):
     """Схема для запроса на логин (альтернатива OAuth2PasswordRequestForm)"""
     username: str = Field(..., example="user@example.com")
     password: str = Field(..., example="password123")
+    
