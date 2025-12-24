@@ -1,6 +1,8 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime # type: ignore
-from .database import Base
-from datetime import datetime, timezone
+from sqlalchemy.ext.declarative import declarative_base # type: ignore
+from datetime import datetime
+
+Base = declarative_base()
 
 class User(Base):
     __tablename__ = "users"
@@ -10,7 +12,8 @@ class User(Base):
     username = Column(String, unique=True, index=True, nullable=False)
     hashed_password = Column(String, nullable=False)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
     def __repr__(self):
         return f"<User(id={self.id}, email={self.email})>"
