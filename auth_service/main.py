@@ -1,12 +1,13 @@
 from fastapi import FastAPI, Depends, HTTPException, status # type: ignore
 from sqlalchemy.orm import Session # type: ignore
+from datetime import timedelta
 import logging
 from datetime import datetime
 
 # Импортируем наши модули
 from app.database import get_db, engine
 from app.models import Base
-from app import schemas, crud
+from app import schemas, crud, auth, dependencies
 
 # Настройка логирования
 logging.basicConfig(
@@ -21,8 +22,8 @@ logger.info("Таблицы базы данных созданы")
 
 # Создаем приложение FastAPI
 app = FastAPI(
-    title="Auth Service with PostgreSQL",
-    description="Микросервис аутентификации с реальной базой данных PostgreSQL",
+    title="Auth Service with JWT Authentication",
+    description="Микросервис аутентификации с JWT токенами и PostgreSQL",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
@@ -35,8 +36,8 @@ def read_root():
     """Корневой эндпоинт для проверки работы сервиса"""
     return {
         "service": "Auth Service",
-        "status": "running",
-        "database": "PostgreSQL",
+        "version": "1.0.0",
+        "features": ["PostgreSQL", "JWT Authentication", "Password Hashing"],
         "timestamp": datetime.now().isoformat()
     }
 
@@ -54,8 +55,8 @@ def health_check(db: Session = Depends(get_db)):
     return {
         "status": "healthy",
         "database": db_status,
-        "timestamp": datetime.now().isoformat(),
-        "service": "auth"
+        "authentication": "JWT",
+        "timestamp": datetime.now().isoformat()
     }
 
 @app.post("/register", 
@@ -96,6 +97,95 @@ def register(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Internal server error"
         )
+
+# ========== JWT АУТЕНТИФИКАЦИЯ (ИСПРАВЛЕННАЯ) ==========
+
+@app.post("/login", 
+          response_model=schemas.Token, 
+          tags=["Authentication"],
+          summary="Аутентификация пользователя")
+def login(
+    username: str,
+    password: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Аутентификация пользователя.
+    
+    Параметры (form-data):
+    - username: email или имя пользователя
+    - password: пароль
+    
+    Возвращает JWT токен для доступа к защищенным эндпоинтам.
+    """
+    logger.info(f"Попытка входа: {username}")
+    
+    user_crud = crud.UserCRUD(db)
+    
+    # Пытаемся найти пользователя по email
+    user = user_crud.get_user_by_email(username)
+    if not user:
+        # Пытаемся найти по username
+        user = user_crud.get_user_by_username(username)
+    
+    # Проверяем пароль через метод authenticate_user
+    if not user or not user_crud.authenticate_user(user.email, password):
+        logger.warning(f"Неудачная попытка входа: {username}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверное имя пользователя или пароль",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Пользователь неактивен"
+        )
+    
+    # Создаем JWT токен
+    access_token_expires = timedelta(minutes=30)
+    access_token = auth.create_access_token(
+        data={"sub": str(user.id), "username": user.username},
+        expires_delta=access_token_expires
+    )
+    
+    logger.info(f"Успешный вход: {user.email} (ID: {user.id})")
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer"
+    }
+
+@app.get("/users/me", 
+         response_model=schemas.UserResponse, 
+         tags=["Users"],
+         summary="Данные текущего пользователя")
+def read_users_me(
+    current_user: schemas.UserResponse = Depends(dependencies.get_current_user)
+):
+    """Получение данных текущего пользователя (требует JWT токен)"""
+    return current_user
+
+@app.get("/protected", 
+         tags=["Test"],
+         summary="Защищенный эндпоинт")
+def protected_route(
+    current_user: schemas.UserResponse = Depends(dependencies.get_current_user)
+):
+    """
+    Защищенный эндпоинт для тестирования JWT аутентификации.
+    
+    Требует валидный JWT токен в заголовке Authorization.
+    """
+    return {
+        "message": "Доступ к защищенному эндпоинту разрешен!",
+        "user_id": current_user.id,
+        "user_email": current_user.email,
+        "timestamp": datetime.now().isoformat()
+    }
+
+# ========== ОБЫЧНЫЕ ЭНДПОИНТЫ ==========
 
 @app.get("/users", response_model=list[schemas.UserResponse], tags=["Users"])
 def read_users(
@@ -139,8 +229,7 @@ async def http_exception_handler(request, exc):
 @app.on_event("startup")
 async def startup_event():
     logger.info("=" * 60)
-    logger.info("Auth Service успешно запущен")
-    logger.info("База данных: PostgreSQL")
+    logger.info("Auth Service с JWT успешно запущен")
     logger.info(f"Документация: http://localhost:8001/docs")
     logger.info("=" * 60)
 
