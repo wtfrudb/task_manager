@@ -5,17 +5,20 @@ from sqlalchemy.ext.declarative import declarative_base # type: ignore
 from sqlalchemy.orm import sessionmaker # type: ignore
 from sqlalchemy.exc import OperationalError # type: ignore
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://auth_user:auth_password@auth_db:5432/auth_db")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://task_user:task_password@task_db:5432/task_db")
 
+# Функция для создания движка с ожиданием готовности БД
 def get_engine_with_retry(url, max_retries=5, delay=3):
     for i in range(max_retries):
         try:
             engine = create_engine(url)
-            engine.connect().close()
+            # Пробуем реально подключиться
+            connection = engine.connect()
+            connection.close()
             return engine
         except OperationalError:
             if i < max_retries - 1:
-                print(f"Ожидание базы Auth... Попытка {i+1}")
+                print(f"Ожидание базы данных {url}... Попытка {i+1}")
                 time.sleep(delay)
             else:
                 raise

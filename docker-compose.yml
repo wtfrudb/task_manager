@@ -1,5 +1,5 @@
-version: '3.8'  # Можете удалить эту строку, как советует warning
 services:
+  # БАЗА ДАННЫХ ДЛЯ AUTH
   auth_db:
     image: postgres:15
     environment:
@@ -8,20 +8,55 @@ services:
       POSTGRES_DB: auth_db
     ports:
       - "5432:5432"
-    volumes:
-      - auth_db_data:/var/lib/postgresql/data
 
+# СЕРВИС АВТОРИЗАЦИИ
   auth_service:
     build: ./auth_service
     ports:
       - "8001:8000"
     environment:
       DATABASE_URL: "postgresql://auth_user:auth_password@auth_db:5432/auth_db"
+      # Добавь _KEY в конец названия:
+      JWT_SECRET_KEY: "super-secret-key" 
+      JWT_ALGORITHM: "HS256"
     depends_on:
       - auth_db
-    # Добавьте для горячей перезагрузки кода:
-    volumes:
-      - ./auth_service:/app
+
+  # СЕРВИС ЗАДАЧ (Новый!)
+  task_service:
+    build: ./task_service
+    ports:
+      - "8002:8000"
+    environment:
+      DATABASE_URL: "postgresql://task_user:task_password@task_db:5432/task_db"
+      RABBITMQ_URL: "amqp://guest:guest@rabbitmq:5672/"
+    depends_on:
+      - task_db
+      - rabbitmq
+
+  # БАЗА ДАННЫХ ДЛЯ ЗАДАЧ (По требованию у каждого сервиса своя БД)
+  task_db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: task_user
+      POSTGRES_PASSWORD: task_password
+      POSTGRES_DB: task_db
+    ports:
+      - "5433:5432"
+
+  # БРОКЕР СООБЩЕНИЙ
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"   # Порт для обмена сообщениями
+      - "15672:15672" # Веб-интерфейс кролика (логин/пароль: guest)
+
+  # СЕРВИС УВЕДОМЛЕНИЙ (Служебный микросервис)
+#  notification_service:
+#    build: ./notification_service
+#    depends_on:
+#      - rabbitmq
 
 volumes:
   auth_db_data:
+  task_db_data:
