@@ -1,27 +1,22 @@
-from pydantic import BaseModel, EmailStr, constr # type: ignore
+from pydantic import BaseModel, EmailStr, Field # type: ignore
 from datetime import datetime
 from typing import Optional
 
 class UserBase(BaseModel):
-    email: EmailStr
-    username: str
+    """Базовый класс для схем пользователя (ООП: наследование)"""
+    email: EmailStr = Field(..., example="user@example.com")
+    username: str = Field(..., example="johndoe", min_length=3, max_length=50)
 
 class UserCreate(UserBase):
-    password: constr(min_length=8) # type: ignore
+    """Схема для создания пользователя"""
+    password: str = Field(..., example="password123", min_length=8)
 
 class UserResponse(UserBase):
+    """Схема для ответа API (исключает пароль)"""
     id: int
     is_active: bool
     created_at: datetime
     updated_at: datetime
 
     class Config:
-        from_attributes = True
-
-class Token(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-
-class TokenData(BaseModel):
-    user_id: Optional[int] = None
-    username: Optional[str] = None
+        from_attributes = True  # Позволяет создавать из объектов SQLAlchemy
