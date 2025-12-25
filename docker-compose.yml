@@ -63,7 +63,7 @@ services:
     depends_on:
       - rabbitmq
     environment:
-      - PYTHONUNBUFFERED=1 # Позволяет видеть принты в логах докера в реальном времени
+      - PYTHONUNBUFFERED=1
     restart: on-failure
 
 volumes:

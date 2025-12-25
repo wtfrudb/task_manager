@@ -12,22 +12,23 @@ from database import get_db, engine
 import models, schemas
 from repositories import TaskRepository
 
-# Настройка логирования (Требование Шага 3)
+# 1. Настройка логирования
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("TaskService")
 
-# Создание таблиц при запуске
+# 2. Создание таблиц при запуске
 models.Base.metadata.create_all(bind=engine)
 
+# 3. ИНИЦИАЛИЗАЦИЯ ПРИЛОЖЕНИЯ (Этой строки у тебя не было)
+app = FastAPI(title="Task Service")
+
+# 4. Настройки безопасности
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "super-secret-key")
 ALGORITHM = "HS256"
-
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="http://localhost:8001/login")
-
-app = FastAPI(title="Task Service")
 
 app.add_middleware(
     CORSMiddleware,
@@ -41,7 +42,7 @@ app.add_middleware(
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    logger.error(f"Ошибка валидации входных данных: {exc.errors()}")
+    logger.error(f"Ошибка валидации данных: {exc.errors()}")
     return JSONResponse(
         status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
         content={"detail": "Некорректный формат данных", "errors": exc.errors()},
@@ -62,18 +63,10 @@ def get_current_user_id(token: str = Depends(oauth2_scheme)):
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
         user_id: str = payload.get("sub")
         if user_id is None:
-            logger.warning("Попытка доступа с пустым ID пользователя в токене")
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, 
-                detail="Invalid token"
-            )
+            raise HTTPException(status_code=401, detail="Invalid token")
         return int(user_id)
-    except JWTError as e:
-        logger.error(f"Ошибка декодирования JWT: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, 
-            detail="Could not validate credentials"
-        )
+    except JWTError:
+        raise HTTPException(status_code=401, detail="Could not validate credentials")
 
 # --- ЭНДПОИНТЫ ---
 
@@ -83,7 +76,7 @@ def create_task(
     db: Session = Depends(get_db),
     current_user_id: int = Depends(get_current_user_id)
 ):
-    logger.info(f"Пользователь {current_user_id} создает задачу: {task_data.title}")
+    logger.info(f"Создание задачи для пользователя {current_user_id}")
     repo = TaskRepository(db)
     return repo.create_task(
         title=task_data.title, 
@@ -97,7 +90,6 @@ def get_my_tasks(
     db: Session = Depends(get_db),
     current_user_id: int = Depends(get_current_user_id)
 ):
-    logger.info(f"Запрос списка задач для пользователя {current_user_id}")
     repo = TaskRepository(db)
     return repo.get_all_by_user(current_user_id)
 
@@ -107,12 +99,10 @@ def complete_task(
     db: Session = Depends(get_db),
     current_user_id: int = Depends(get_current_user_id)
 ):
-    logger.info(f"Пользователь {current_user_id} отмечает задачу {task_id} как выполненную")
     repo = TaskRepository(db)
     task = repo.mark_as_completed(task_id, current_user_id)
     if not task:
-        logger.warning(f"Задача {task_id} не найдена или доступ запрещен для пользователя {current_user_id}")
-        raise HTTPException(status_code=404, detail="Task not found or access denied")
+        raise HTTPException(status_code=404, detail="Task not found")
     return task
 
 @app.delete("/tasks/{task_id}")
@@ -121,11 +111,8 @@ def delete_task(
     db: Session = Depends(get_db),
     current_user_id: int = Depends(get_current_user_id)
 ):
-    logger.info(f"Пользователь {current_user_id} удаляет задачу {task_id}")
     repo = TaskRepository(db)
-    success = repo.delete_task(task_id, current_user_id)
-    if not success:
-        logger.warning(f"Не удалось удалить задачу {task_id}")
+    if not repo.delete_task(task_id, current_user_id):
         raise HTTPException(status_code=404, detail="Task not found")
     return {"message": "Task deleted"}
 
