@@ -1,12 +1,14 @@
 from pydantic import BaseModel # type: ignore
 from typing import Optional
+from datetime import date
 
 class TaskBase(BaseModel):
     title: str
     description: Optional[str] = None
+    due_date: Optional[date] = None # Формат в JSON: "YYYY-MM-DD"
 
 class TaskCreate(TaskBase):
-    pass  # Используется при создании (то, что присылает пользователь)
+    pass
 
 class TaskResponse(TaskBase):
     id: int
@@ -14,4 +16,4 @@ class TaskResponse(TaskBase):
     user_id: int
 
     class Config:
-        from_attributes = True # Позволяет Pydantic работать с моделями SQLAlchemy
+        from_attributes = True

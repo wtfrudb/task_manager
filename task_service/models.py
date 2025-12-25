@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean # type: ignore
+from sqlalchemy import Column, Integer, String, Boolean, Date # type: ignore
 from database import Base
 
 class TaskModel(Base):
@@ -9,4 +9,5 @@ class TaskModel(Base):
     title = Column(String, nullable=False)
     description = Column(String)
     is_completed = Column(Boolean, default=False)
-    user_id = Column(Integer)  # Сюда мы будем записывать ID пользователя из токена
+    due_date = Column(Date, nullable=True)  # Опциональный срок выполнения
+    user_id = Column(Integer)  # ID пользователя из Auth Service
