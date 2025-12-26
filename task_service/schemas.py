@@ -24,7 +24,7 @@ class TaskUpdate(BaseModel):
 
     class Config:
         # Теперь Swagger покажет ПОЛНЫЙ список полей в примере
-        json_schema_extra = {
+            json_schema_extra = {
             "example": {
                 "title": "Новое название",
                 "description": "Описание",
