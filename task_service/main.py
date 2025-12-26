@@ -22,8 +22,8 @@ logger = logging.getLogger("TaskService")
 # 2. Создание таблиц при запуске
 models.Base.metadata.create_all(bind=engine)
 
-# 3. ИНИЦИАЛИЗАЦИЯ ПРИЛОЖЕНИЯ (Этой строки у тебя не было)
-app = FastAPI(title="Task Service")
+# 3. Инициализация приложения
+app = FastAPI(title="Task Service API")
 
 # 4. Настройки безопасности
 SECRET_KEY = os.getenv("JWT_SECRET_KEY", "super-secret-key")
@@ -38,7 +38,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ========== ОБРАБОТЧИКИ ОШИБОК (Защита от 500-х ошибок) ==========
+# ========== ОБРАБОТЧИКИ ОШИБОК ==========
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
@@ -82,6 +82,7 @@ def create_task(
         title=task_data.title, 
         description=task_data.description, 
         due_date=task_data.due_date,
+        is_important=task_data.is_important, # Добавлена поддержка важности
         user_id=current_user_id
     )
 
@@ -92,6 +93,22 @@ def get_my_tasks(
 ):
     repo = TaskRepository(db)
     return repo.get_all_by_user(current_user_id)
+
+@app.patch("/tasks/{task_id}", response_model=schemas.TaskResponse)
+def update_task(
+    task_id: int,
+    task_update: schemas.TaskUpdate, # Новая схема для частичного обновления
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id)
+):
+    """ЭНДПОИНТ РЕДАКТИРОВАНИЯ: Позволяет менять название, описание, срок и статус"""
+    repo = TaskRepository(db)
+    # Преобразуем Pydantic модель в словарь, исключая неустановленные значения
+    update_data = task_update.dict(exclude_unset=True)
+    task = repo.update_task(task_id, current_user_id, update_data)
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return task
 
 @app.patch("/tasks/{task_id}/complete", response_model=schemas.TaskResponse)
 def complete_task(

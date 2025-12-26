@@ -31,12 +31,14 @@ class TaskRepository:
         except Exception as e:
             print(f" [AMQP] Ошибка отправки: {e}")
 
-    def create_task(self, title: str, description: str, user_id: int, due_date=None):
+    def create_task(self, title: str, description: str, user_id: int, due_date=None, is_important: bool = False):
+        """Создание задачи с учетом флага важности"""
         db_task = TaskModel(
             title=title, 
             description=description, 
             user_id=user_id,
-            due_date=due_date
+            due_date=due_date,
+            is_important=is_important
         )
         self.db.add(db_task)
         self.db.commit()
@@ -45,6 +47,30 @@ class TaskRepository:
         # Уведомление о СОЗДАНИИ
         self._send_notification(db_task.id, user_id, title, "created")
         return db_task
+
+    def update_task(self, task_id: int, user_id: int, update_data: dict):
+        """
+        Универсальный метод обновления задачи (ООП: инкапсуляция логики обновления).
+        Позволяет редактировать любые поля и менять флаг важности.
+        """
+        task = self.db.query(TaskModel).filter(
+            TaskModel.id == task_id, 
+            TaskModel.user_id == user_id
+        ).first()
+        
+        if task:
+            # Обновляем только те поля, которые пришли в запросе
+            for key, value in update_data.items():
+                if value is not None:
+                    setattr(task, key, value)
+            
+            self.db.commit()
+            self.db.refresh(task)
+
+            # Отправляем уведомление об обновлении
+            self._send_notification(task.id, user_id, task.title, "updated")
+            return task
+        return None
 
     def get_all_by_user(self, user_id: int):
         return self.db.query(TaskModel).filter(TaskModel.user_id == user_id).all()
@@ -56,7 +82,7 @@ class TaskRepository:
         ).first()
         
         if task:
-            task_title = task.title # Сохраняем имя перед удалением
+            task_title = task.title 
             self.db.delete(task)
             self.db.commit()
             
@@ -66,17 +92,5 @@ class TaskRepository:
         return False
 
     def mark_as_completed(self, task_id: int, user_id: int):
-        task = self.db.query(TaskModel).filter(
-            TaskModel.id == task_id, 
-            TaskModel.user_id == user_id
-        ).first()
-        
-        if task:
-            task.is_completed = True
-            self.db.commit()
-            self.db.refresh(task)
-
-            # Уведомление о ВЫПОЛНЕНИИ
-            self._send_notification(task.id, user_id, task.title, "completed")
-            return task
-        return None
+        # Используем наш новый метод update_task для соблюдения DRY (Don't Repeat Yourself)
+        return self.update_task(task_id, user_id, {"is_completed": True})
