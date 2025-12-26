@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session # type: ignore
 from jose import JWTError, jwt # type: ignore
 import os
 import logging
+from datetime import date
+from typing import Optional
 
 from database import get_db, engine
 import models, schemas
@@ -53,7 +55,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     logger.critical(f"Необработанное исключение: {str(exc)}", exc_info=True)
     return JSONResponse(
         status_code=status.HTTP_400_BAD_REQUEST,
-        content={"detail": "Внутренняя ошибка сервиса задач."},
+        content={"detail": f"Внутренняя ошибка сервиса задач: {str(exc)}"},
     )
 
 # ========== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ ==========
@@ -82,7 +84,7 @@ def create_task(
         title=task_data.title, 
         description=task_data.description, 
         due_date=task_data.due_date,
-        is_important=task_data.is_important, # Добавлена поддержка важности
+        is_important=task_data.is_important,
         user_id=current_user_id
     )
 
@@ -94,16 +96,36 @@ def get_my_tasks(
     repo = TaskRepository(db)
     return repo.get_all_by_user(current_user_id)
 
-@app.patch("/tasks/{task_id}", response_model=schemas.TaskResponse)
-def update_task(
-    task_id: int,
-    task_update: schemas.TaskUpdate, # Новая схема для частичного обновления
+@app.get("/tasks/filter", response_model=list[schemas.TaskResponse])
+def filter_tasks(
+    start_date: Optional[date] = None,
+    end_date: Optional[date] = None,
+    no_deadline: bool = False,
+    overdue: bool = False,
     db: Session = Depends(get_db),
     current_user_id: int = Depends(get_current_user_id)
 ):
-    """ЭНДПОИНТ РЕДАКТИРОВАНИЯ: Позволяет менять название, описание, срок и статус"""
+    """
+    ЭНДПОИНТ ФИЛЬТРАЦИИ:
+    Позволяет искать задачи на сегодня, завтра, неделю, без дедлайна или просроченные.
+    """
     repo = TaskRepository(db)
-    # Преобразуем Pydantic модель в словарь, исключая неустановленные значения
+    return repo.get_filtered_tasks(
+        user_id=current_user_id,
+        start_date=start_date,
+        end_date=end_date,
+        no_deadline=no_deadline,
+        overdue=overdue
+    )
+
+@app.patch("/tasks/{task_id}", response_model=schemas.TaskResponse)
+def update_task(
+    task_id: int,
+    task_update: schemas.TaskUpdate,
+    db: Session = Depends(get_db),
+    current_user_id: int = Depends(get_current_user_id)
+):
+    repo = TaskRepository(db)
     update_data = task_update.dict(exclude_unset=True)
     task = repo.update_task(task_id, current_user_id, update_data)
     if not task:
